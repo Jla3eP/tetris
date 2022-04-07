@@ -1,23 +1,25 @@
 package main
 
 import (
+	"fmt"
 	"github.com/Jla3eP/tetris/server_side/auth/handling"
-	"log"
+	"github.com/gorilla/mux"
 	"net/http"
 )
 
+const address = ":1234"
+
 func main() {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/register", handling.CreateUser)
-	log.Fatalln(http.ListenAndServe("localhost:1234", mux))
 
-	/*usr := User.User{NickName: "TestUser"}
-	err := database.CreateUser(context.Background(), usr, "1234qwer")
-	if err != nil {
-		fmt.Println(err.Error())
+	router := mux.NewRouter()
+	router.HandleFunc("/register", handling.CreateUser).Methods(http.MethodPost)
+
+	server := &http.Server{
+		Addr:    address,
+		Handler: router,
 	}
-
-	if ok, err := database.VerifyPassword(context.Background(), usr, "1234qwer"); !ok {
-		fmt.Println(err.Error())
-	}*/
+	err := server.ListenAndServeTLS("./client_side/localhost.crt", "./client_side/localhost.key")
+	if err != nil {
+		fmt.Println(err)
+	}
 }
