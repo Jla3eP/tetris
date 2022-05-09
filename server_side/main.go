@@ -18,7 +18,7 @@ func main() {
 		Addr:    address,
 		Handler: router,
 	}
-	err := server.ListenAndServeTLS("./client_side/localhost.crt", "./client_side/localhost.key")
+	err := server.ListenAndServeTLS("./server_side/keys/localhost.crt", "./server_side/keys/localhost.key")
 	if err != nil {
 		fmt.Println(err)
 	}

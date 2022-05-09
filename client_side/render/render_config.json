@@ -1,0 +1,13 @@
+{
+  "texturepack_name" : "classic_style",
+  "texture_width" : 24,
+  "texture_height" : 24,
+  "bonus_px_window_width" : 170,
+  "bonus_px_window_height" : 50,
+  "bonus_percents_window_width" : 0,
+  "bonus_percents_window_height" : 0,
+  "field_bias_x" : 50,
+  "field_bias_y" : 50,
+  "target_fps" : 60,
+  "print_fps" : false
+}

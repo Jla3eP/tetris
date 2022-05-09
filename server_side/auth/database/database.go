@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Jla3eP/tetris/server_side/auth/User"
 	"github.com/Jla3eP/tetris/server_side/auth/hash"
+	"github.com/Jla3eP/tetris/server_side/auth/user"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -23,14 +23,14 @@ func UserExists(ctx context.Context, userName string) bool {
 	return true
 }
 
-func CreateUser(ctx context.Context, user User.User, clearPassword string) error {
+func CreateUser(ctx context.Context, user user.User, clearPassword string) error {
 	if UserExists(ctx, user.NickName) {
-		return errors.New(fmt.Sprintf("User with nickname=\"%s\" exists", user.NickName))
+		return errors.New(fmt.Sprintf("user with nickname=\"%s\" exists", user.NickName))
 	}
 
 	userData := bson.M{
 		"nickname":       user.NickName,
-		"account_status": User.StatusActive,
+		"account_status": user.StatusActive,
 		"created_at":     time.Now(),
 	}
 
@@ -55,7 +55,7 @@ func CreateUser(ctx context.Context, user User.User, clearPassword string) error
 	return nil
 }
 
-func VerifyPassword(ctx context.Context, user User.User, clearPassword string) (bool, error) {
+func VerifyPassword(ctx context.Context, user user.User, clearPassword string) (bool, error) {
 	filter := bson.D{{"nickname", user.NickName}}
 
 	if user.HashedPassword == "" {
@@ -75,7 +75,7 @@ func VerifyPassword(ctx context.Context, user User.User, clearPassword string) (
 	return true, nil
 }
 
-func infoToSalt(usr User.User) string {
+func infoToSalt(usr user.User) string {
 	return fmt.Sprintf(idAndNicknameToSaltFormat, usr.ID.String(), usr.NickName)
 }
 
