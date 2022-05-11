@@ -32,7 +32,6 @@ var (
 
 	fieldBiasX = uint32(50)
 	fieldBiasY = uint32(50)
-	rd         = &RenderData{}
 	endGame    = false
 )
 
@@ -46,8 +45,10 @@ func GetY() int {
 	return windowY
 }
 
-func (r *Render) RenderAll(screen *et.Image /*rdCh <-chan *RenderData, endCh <-chan struct{}*/) { //TODO
+func (r *Render) RenderAll(screen *et.Image, field *field.Field, figure *field.Figure /*rdCh <-chan *RenderData, endCh <-chan struct{}*/) { //TODO
 	r.renderFieldBackground(screen, r.FieldSize.X, r.FieldSize.Y)
+	r.renderField(screen, field)
+	r.renderFigure(screen, figure)
 }
 
 func (r *Render) renderEndgameInfo(screen *et.Image) { //TODO
@@ -79,19 +80,23 @@ func (r *Render) renderField(screen *et.Image, f *field.Field) {
 	for y := range f.Field {
 		for x := range f.Field[y] {
 			if f.Field[y][x].IsActive {
-				r.renderFieldElement(screen, int32(x), int32(y), f.Field[y][x].Color)
+				r.renderFieldElement(
+					screen,
+					int32(fieldBiasX)+int32(x)*textureWidth,
+					int32(fieldBiasY)+int32(y)*textureHeight,
+					f.Field[y][x].Color)
 			}
 		}
 	}
 }
 
-func (r *Render) renderFigure(screen *et.Image, f field.FigureInterface) {
+func (r *Render) renderFigure(screen *et.Image, f *field.Figure) {
 	stateWithRightCoords := f.GetRightCoords()
 
 	for i := range stateWithRightCoords.Coords {
 		r.renderFieldElement(screen,
-			int32(stateWithRightCoords.Coords[i].X),
-			int32(stateWithRightCoords.Coords[i].Y),
+			int32(fieldBiasX)+int32(stateWithRightCoords.Coords[i].X)*textureWidth,
+			int32(fieldBiasY)+int32(stateWithRightCoords.Coords[i].Y)*textureHeight,
 			f.GetColor())
 	}
 }
@@ -104,6 +109,14 @@ func (r *Render) renderInfo(screen *et.Image) {
 
 func (r *Render) renderWindow(screen *et.Image) { // TODO
 
+}
+
+func addTextureToMap(key int, TexturePackName, name string) {
+	var err error
+	textures[key], _, err = drw.NewImageFromFile(fmt.Sprintf(pathToTexturesFormat, TexturePackName, name))
+	if err != nil {
+		log.Fatalln(err)
+	}
 }
 
 func setConfigAndUploadTextures() {
@@ -142,30 +155,12 @@ func setConfigAndUploadTextures() {
 
 	textures = make(map[int]*et.Image)
 
-	textures[constants.ColorBlack], _, err = drw.NewImageFromFile(fmt.Sprintf(pathToTexturesFormat, config.TexturePackName, "black"))
-	if err != nil {
-		log.Fatalln(err)
-	}
-	textures[constants.ColorBlue], _, err = drw.NewImageFromFile(fmt.Sprintf(pathToTexturesFormat, config.TexturePackName, "blue"))
-	if err != nil {
-		log.Fatalln(err)
-	}
-	textures[constants.ColorGreen], _, err = drw.NewImageFromFile(fmt.Sprintf(pathToTexturesFormat, config.TexturePackName, "green"))
-	if err != nil {
-		log.Fatalln(err)
-	}
-	textures[constants.ColorOrange], _, err = drw.NewImageFromFile(fmt.Sprintf(pathToTexturesFormat, config.TexturePackName, "orange"))
-	if err != nil {
-		log.Fatalln(err)
-	}
-	textures[constants.ColorRed], _, err = drw.NewImageFromFile(fmt.Sprintf(pathToTexturesFormat, config.TexturePackName, "red"))
-	if err != nil {
-		log.Fatalln(err)
-	}
-	textures[constants.ColorYellow], _, err = drw.NewImageFromFile(fmt.Sprintf(pathToTexturesFormat, config.TexturePackName, "yellow"))
-	if err != nil {
-		log.Fatalln(err)
-	}
+	addTextureToMap(constants.ColorBlack, config.TexturePackName, "black")
+	addTextureToMap(constants.ColorBlue, config.TexturePackName, "blue")
+	addTextureToMap(constants.ColorGreen, config.TexturePackName, "green")
+	addTextureToMap(constants.ColorOrange, config.TexturePackName, "orange")
+	addTextureToMap(constants.ColorRed, config.TexturePackName, "red")
+	addTextureToMap(constants.ColorYellow, config.TexturePackName, "yellow")
 }
 
 func init() {

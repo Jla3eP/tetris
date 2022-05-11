@@ -21,8 +21,3 @@ type renderConfig struct {
 	TargetFps                 int32  `json:"target_fps"`
 	PrintFps                  bool   `json:"print_fps"`
 }
-
-type RenderData struct {
-	Figure *field.Figure
-	Field  *field.Field
-}

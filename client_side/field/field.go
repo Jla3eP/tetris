@@ -20,11 +20,10 @@ func NewField() *Field {
 	return fld
 }
 
-func (f *Field) CheckCollision(figure FigureInterface) bool {
+func (f *Field) CheckCollision(figure *Figure) bool {
 	figureCoords := figure.GetRightCoords()
-
 	for _, block := range figureCoords.Coords {
-		if len(f.Field) <= block.Y || len(f.Field[block.Y]) <= block.X || f.Field[block.Y][block.X].IsActive {
+		if len(f.Field) <= block.Y || block.Y < 0 || len(f.Field[block.Y]) <= block.X || block.X < 0 || f.Field[block.Y][block.X].IsActive {
 			return true
 		}
 	}
@@ -42,51 +41,44 @@ func (f *Field) GetSize() Coords2 {
 	return crds
 }
 
-func (f *Field) FixateFigure(figure FigureInterface) {
+func (f *Field) FixateFigure(figure *Figure) {
 	figureCoords := figure.GetRightCoords()
 
-	f.rwm.Lock()
 	for _, block := range figureCoords.Coords {
 		f.Field[block.Y][block.X].IsActive = true
 		f.Field[block.Y][block.X].Color = figure.GetColor()
 	}
-	f.rwm.Unlock()
 }
 
-func (f *Field) TryRotateFigure(figure FigureInterface) error {
+func (f *Field) TryRotateFigure(figure *Figure) error {
 	figure.rotate()
 	if f.CheckCollision(figure) {
-		figure.MoveRight()
+		figure.moveRight()
 		if f.CheckCollision(figure) {
-			figure.MoveLeft()
-			figure.MoveLeft()
+			figure.moveLeft()
+			figure.moveLeft()
 			if f.CheckCollision(figure) {
-				figure.MoveRight()
+				figure.moveRight()
 				figure.backRotate()
 				return errors.New("can't rotate figure")
 			}
 		}
 	}
+
 	return nil
 }
 
-func (f *Field) TryMoveFigure(figure FigureInterface) error {
+func (f *Field) TryMoveFigure(figure *Figure) error {
 	var err error = nil
-	if et.IsKeyPressed(et.KeyD) {
-		figure.MoveRight()
-		if f.CheckCollision(figure) {
-			figure.MoveLeft()
-			err = errors.New("can't move right")
-		}
-	} else if et.IsKeyPressed(et.KeyA) {
-		figure.MoveLeft()
-		if f.CheckCollision(figure) {
-			figure.MoveRight()
-			err = errors.New("can't move left")
-		}
+	err = f.tryMoveRight(figure)
+	if err != nil {
+		return err
 	}
-
-	return err
+	err = f.tryMoveLeft(figure)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (f *Field) ClearField() int {
@@ -124,4 +116,34 @@ func (f *Field) clearLine(lineIndex int) {
 	for i := 0; i < len(f.Field[lineIndex]); i++ {
 		f.Field[lineIndex][i].IsActive = false
 	}
+}
+
+func (f *Field) tryMoveRight(figure *Figure) error {
+	figure.Mutex.Lock()
+	defer func() {
+		figure.Mutex.Unlock()
+	}()
+	if et.IsKeyPressed(et.KeyD) {
+		figure.moveRight()
+		if f.CheckCollision(figure) {
+			figure.moveLeft()
+			return errors.New("can't move right")
+		}
+	}
+	return nil
+}
+
+func (f *Field) tryMoveLeft(figure *Figure) error {
+	figure.Mutex.Lock()
+	defer func() {
+		figure.Mutex.Unlock()
+	}()
+	if et.IsKeyPressed(et.KeyA) {
+		figure.moveLeft()
+		if f.CheckCollision(figure) {
+			figure.moveRight()
+			return errors.New("can't move left")
+		}
+	}
+	return nil
 }

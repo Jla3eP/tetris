@@ -19,26 +19,32 @@ type Coords2 struct {
 	Y int `json:"y"`
 }
 
-type possibleStatus struct {
+type PossibleStatus struct {
 	Coords []Coords2 `json:"vec2"`
 }
 
-type FigureInterface interface {
-	rotate()
-	backRotate()
-	GetCoords() *Coords2
-	GetCurrentStatus() *possibleStatus
-	GetColor() int
-	GetRightCoords() *possibleStatus
-	MoveRight()
-	MoveLeft()
+func (p *PossibleStatus) GetCopy() *PossibleStatus {
+	PS := &PossibleStatus{Coords: make([]Coords2, len(p.Coords))}
+	copy(PS.Coords, p.Coords)
+	return PS
 }
 
 type Figure struct {
-	PossibleStatuses   []possibleStatus `json:"possible_statuses"`
+	id                 int8
+	PossibleStatuses   []PossibleStatus `json:"possible_statuses"`
 	Color              int
 	CurrentRotateIndex int
 	CurrentCoords      Coords2
+	Mutex              *sync.Mutex
+	Fixed              bool
+}
+
+func (f *Figure) GetCopy() *Figure {
+	figure := &Figure{PossibleStatuses: make([]PossibleStatus, len(f.PossibleStatuses))}
+	for i := range f.PossibleStatuses {
+		figure.PossibleStatuses[i] = *f.PossibleStatuses[i].GetCopy()
+	}
+	return figure
 }
 
 type figuresConfig struct {
