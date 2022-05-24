@@ -1,9 +1,11 @@
 package mainGame
 
 import (
+	"errors"
 	"github.com/Jla3eP/tetris/client_side/field"
 	"github.com/Jla3eP/tetris/client_side/render"
 	et "github.com/hajimehoshi/ebiten/v2"
+	"math"
 	"math/rand"
 	"time"
 )
@@ -16,9 +18,15 @@ type MainGame struct {
 	defaultMoveDownTicker *time.Ticker
 	shortMoveDownTicker   *time.Ticker
 	moveTicker            *time.Ticker
-	rotateTicker          *time.Ticker
 
-	moveDown bool
+	rotateTimer time.Time
+	rotateSleep time.Duration
+
+	movingDown  bool
+	endGame     bool
+	closeWindow bool
+
+	scores int
 }
 
 func NewGame() *MainGame {
@@ -31,28 +39,46 @@ func NewGame() *MainGame {
 	mg.defaultMoveDownTicker = time.NewTicker(350 * time.Millisecond)
 	mg.shortMoveDownTicker = time.NewTicker(100 * time.Millisecond)
 	mg.moveTicker = time.NewTicker(100 * time.Millisecond)
-	mg.rotateTicker = time.NewTicker(250 * time.Millisecond)
+	mg.rotateTimer = time.Now()
+	mg.rotateSleep = 150 * time.Millisecond
 
-	mg.moveDown = false
+	mg.movingDown = false
+	mg.closeWindow = false
 	return mg
 }
 
 func (mg *MainGame) Update() error {
-	//<-mg.tickTicker.C
 	if mg.figure == nil || mg.figure.Fixed {
 		mg.figure = field.GetRandomFigure()
+		if mg.field.CheckCollision(mg.figure) {
+			mg.endGame = true
+		}
 	}
-	mg.processAll()
+	if !mg.endGame {
+		mg.processAll()
+	} else {
+		mg.checkESC()
+	}
+
+	if mg.closeWindow {
+		return errors.New("it's okay. Game over")
+	}
 
 	return nil
 }
 
-func (mg *MainGame) processInput() {
-	if !mg.moveDown && et.IsKeyPressed(et.KeyS) {
-		mg.moveDown = true
+func (mg *MainGame) checkESC() {
+	if et.IsKeyPressed(et.KeyEscape) {
+		mg.closeWindow = true
 	}
-	if mg.moveDown && !et.IsKeyPressed(et.KeyS) {
-		mg.moveDown = false
+}
+
+func (mg *MainGame) processInput() {
+	if !mg.movingDown && et.IsKeyPressed(et.KeyS) {
+		mg.movingDown = true
+	}
+	if mg.movingDown && !et.IsKeyPressed(et.KeyS) {
+		mg.movingDown = false
 	}
 
 	select {
@@ -62,18 +88,14 @@ func (mg *MainGame) processInput() {
 		break
 	}
 
-	if et.IsKeyPressed(et.KeyW) {
-		select {
-		case <-mg.rotateTicker.C:
-			_ = mg.field.TryRotateFigure(mg.figure)
-		default:
-			break
-		}
+	if et.IsKeyPressed(et.KeyW) && time.Now().After(mg.rotateTimer.Add(mg.rotateSleep)) {
+		_ = mg.field.TryRotateFigure(mg.figure)
+		mg.rotateTimer = time.Now()
 	}
 }
 
 func (mg *MainGame) processMoveDown() {
-	if !mg.moveDown {
+	if !mg.movingDown {
 		select {
 		case <-mg.defaultMoveDownTicker.C:
 			break
@@ -90,7 +112,10 @@ func (mg *MainGame) processMoveDown() {
 	}
 
 	if !mg.figure.MoveDown(mg.field) {
-		mg.field.ClearField()
+		destroyedLines := mg.field.ClearField()
+		if destroyedLines != 0 {
+			mg.scores += int(float64(destroyedLines*500) * (math.Pow(1.5, float64(destroyedLines-1))))
+		}
 		mg.figure.Fixed = true
 		return
 	}
@@ -102,7 +127,7 @@ func (mg *MainGame) processAll() {
 }
 
 func (mg *MainGame) Draw(screen *et.Image) {
-	mg.render.RenderAll(screen, mg.field, mg.figure)
+	mg.render.RenderAll(screen, mg.field, mg.figure, mg.scores, mg.endGame)
 }
 
 func (mg *MainGame) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {

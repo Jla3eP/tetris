@@ -7,32 +7,35 @@ import (
 	"github.com/Jla3eP/tetris/client_side/field"
 	et "github.com/hajimehoshi/ebiten/v2"
 	drw "github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/text"
+	fnt "golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
+	"image/color"
 	_ "image/png"
 	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 )
 
 var (
-	TargetFps = int32(60)
-	DrawFps   = true
-
-	windowX = 0
-	windowY = 0
+	windowX int
+	windowY int
 
 	textures map[int]*et.Image
 
-	textureWidth  = int32(25)
-	textureHeight = int32(25)
+	textureWidth  int32
+	textureHeight int32
 
-	bonusPxWindowWidth        = int32(20)
-	bonusPxWindowHeight       = int32(0)
-	bonusPercentsWindowWidth  = int32(5)
-	bonusPercentsWindowHeight = int32(5)
+	bonusPxWindowWidth        int32
+	bonusPxWindowHeight       int32
+	bonusPercentsWindowWidth  int32
+	bonusPercentsWindowHeight int32
 
-	fieldBiasX = uint32(50)
-	fieldBiasY = uint32(50)
-	endGame    = false
+	fieldBiasX uint32
+	fieldBiasY uint32
+
+	font fnt.Face
 )
 
 const pathToTexturesFormat = "client_side/render/textures/%s/texture_sq_%s.png"
@@ -45,13 +48,20 @@ func GetY() int {
 	return windowY
 }
 
-func (r *Render) RenderAll(screen *et.Image, field *field.Field, figure *field.Figure /*rdCh <-chan *RenderData, endCh <-chan struct{}*/) { //TODO
+func (r *Render) RenderAll(screen *et.Image, field *field.Field, figure *field.Figure, scores int, endGame bool) {
 	r.renderFieldBackground(screen, r.FieldSize.X, r.FieldSize.Y)
 	r.renderField(screen, field)
-	r.renderFigure(screen, figure)
+	if !endGame {
+		r.renderFigure(screen, figure)
+		r.renderInfo(screen, scores, field)
+	} else {
+		r.renderEndgameInfo(screen, scores, field)
+	}
 }
 
-func (r *Render) renderEndgameInfo(screen *et.Image) { //TODO
+func (r *Render) renderEndgameInfo(screen *et.Image, scores int, f *field.Field) { //TODO
+	text.Draw(screen, "Game over\nYour scores:"+strconv.Itoa(scores)+"\nPress ESC to exit", font, int(int32(fieldBiasX)+(textureWidth+1)*int32(f.GetSize().X)),
+		int(fieldBiasY), color.RGBA{R: 255, G: 255, B: 255, A: 255})
 }
 
 func (r *Render) renderFieldBackground(screen *et.Image, x, y int) {
@@ -101,14 +111,9 @@ func (r *Render) renderFigure(screen *et.Image, f *field.Figure) {
 	}
 }
 
-func (r *Render) renderInfo(screen *et.Image) {
-	if DrawFps {
-		//rl.DrawFPS(2, 0) TODO
-	}
-}
-
-func (r *Render) renderWindow(screen *et.Image) { // TODO
-
+func (r *Render) renderInfo(screen *et.Image, scores int, f *field.Field) {
+	text.Draw(screen, strconv.Itoa(scores), font, int(int32(fieldBiasX)+(textureWidth+1)*int32(f.GetSize().X)),
+		int(fieldBiasY), color.RGBA{R: 255, G: 255, B: 255, A: 255})
 }
 
 func addTextureToMap(key int, TexturePackName, name string) {
@@ -139,7 +144,6 @@ func setConfigAndUploadTextures() {
 		log.Fatalln(err)
 		return
 	}
-	TargetFps = config.TargetFps
 	textureHeight = config.TextureHeight
 	textureWidth = config.TextureWidth
 	bonusPxWindowHeight = config.BonusPxWindowHeight
@@ -148,7 +152,6 @@ func setConfigAndUploadTextures() {
 	bonusPercentsWindowHeight = config.BonusPercentsWindowHeight
 	fieldBiasX = config.FieldBiasX
 	fieldBiasY = config.FieldBiasY
-	DrawFps = config.PrintFps
 
 	windowX = int((int32(field.FieldX)*textureWidth)*(1+bonusPercentsWindowWidth/100)) + int(bonusPxWindowWidth+int32(fieldBiasX))
 	windowY = int((int32(field.FieldY)*textureHeight)*(1+bonusPercentsWindowHeight/100)) + int(bonusPxWindowHeight+int32(fieldBiasY))
@@ -161,6 +164,8 @@ func setConfigAndUploadTextures() {
 	addTextureToMap(constants.ColorOrange, config.TexturePackName, "orange")
 	addTextureToMap(constants.ColorRed, config.TexturePackName, "red")
 	addTextureToMap(constants.ColorYellow, config.TexturePackName, "yellow")
+
+	font = basicfont.Face7x13
 }
 
 func init() {

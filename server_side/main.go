@@ -13,6 +13,8 @@ func main() {
 
 	router := mux.NewRouter()
 	router.HandleFunc("/register", handling.CreateUser).Methods(http.MethodPost)
+	router.HandleFunc("/logIn", handling.LogIn).Methods(http.MethodGet)
+	router.HandleFunc("/updateSession", handling.UpdateSessionTimeout).Methods(http.MethodPost)
 
 	server := &http.Server{
 		Addr:    address,

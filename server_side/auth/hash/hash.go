@@ -5,12 +5,19 @@ import (
 	"fmt"
 )
 
-const hashFormat = "%s:%s" // salt:password
-const hashRepeats = 100
+const (
+	hashFormat  = "%s:%s" // salt:password
+	hashRepeats = 100
+)
 
-func CreateHash(salt, password string) string {
+func CreateSaltPasswordHash(salt, password string) string {
 	sum := []byte(fmt.Sprintf(hashFormat, salt, password))
+	return CreateHash(sum)
+}
+
+func CreateHash(sum []byte) string {
 	var crutch [32]byte
+
 	for i := 0; i < hashRepeats; i++ {
 		crutch = sha256.Sum256(sum)
 		sum = crutch[:]

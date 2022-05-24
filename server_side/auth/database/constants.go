@@ -8,7 +8,9 @@ import (
 var collection *mongo.Collection
 var ctx = context.Background()
 
-const host = "localhost"
-const port = "27017"
+const (
+	dbHost = "localhost"
+	dbPort = "27017"
 
-const idAndNicknameToSaltFormat = "%s+%s" //id.InsertedID.(primitive.ObjectID).String(), user.NickName
+	idAndNicknameToSaltFormat = "%s+%s" //id.InsertedID.(primitive.ObjectID).String(), user.NickName
+)
