@@ -4,20 +4,69 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Jla3eP/tetris/server_side/auth/database"
 	"github.com/Jla3eP/tetris/server_side/auth/hash"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
 
 const infoToSaltFormat = "%s:%s:%v:%v"
 
+func tryToFindGame() {
+	queueMu.RLock()
+	if len(playersInQueue) >= 2 {
+
+	} else {
+
+	}
+}
+
+func auth(w http.ResponseWriter, r *http.Request) (*SessionUpdateRequest, error) {
+	info, err := getSessionInfoFromRequest(r)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return nil, err
+	}
+	id, err := database.GetIdByUsername(info.Nickname)
+	if err != nil {
+		return nil, err
+	}
+
+	sessionsMu.RLock()
+	session, ok := sessions[info.SessionKey]
+	sessionsMu.RUnlock()
+
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		return nil, errors.New("can't find session by key")
+	}
+
+	if session.username != info.Nickname || session.userAgent != r.UserAgent() || session.id.String() != id.String() {
+		w.WriteHeader(http.StatusUnauthorized)
+		return nil, errors.New("unauthorized: dismatch detected")
+	}
+
+	sessionsMu.Lock()
+	session.lastUpdate = time.Now()
+	sessions[info.SessionKey] = session
+	sessionsMu.Unlock()
+
+	return info, nil
+}
+
 func createSessionKey(r *http.Request, username string, ID primitive.ObjectID, createdAt time.Time) (string, error) {
 	userAgent := r.UserAgent()
 	sessionKey := saltToSessionKey(fmt.Sprintf(infoToSaltFormat, userAgent, username, ID, createdAt))
-	return sessionKey, nil
+
+	key := ""
+	for _, v := range sessionKey {
+		key += strconv.Itoa(int(v))
+	}
+	return key, nil
 }
 
 func getSessionInfoFromRequest(r *http.Request) (*SessionUpdateRequest, error) {
@@ -54,6 +103,6 @@ func getAuthInfoFromRequest(w http.ResponseWriter, r *http.Request) (*AuthInfo, 
 	return usr, nil
 }
 
-func saltToSessionKey(info string) string {
-	return hash.CreateHash([]byte(info))
+func saltToSessionKey(info string) []byte {
+	return []byte(hash.CreateHash([]byte(info)))
 }

@@ -16,12 +16,20 @@ const (
 )
 
 var (
-	sessions        map[string]sessionValues
+	sessionsMu      = &sync.RWMutex{}
+	sessions        = make(map[string]sessionValues)
 	sessionsCleaner = sync.Once{}
+
+	playersInQueue = make(map[string]struct{})
+	queueMu        = &sync.RWMutex{}
 )
 
 func FindGame(w http.ResponseWriter, r *http.Request) {
-
+	if info, err := auth(w, r); err == nil {
+		queueMu.Lock()
+		playersInQueue[info.Nickname] = struct{}{}
+		queueMu.Unlock()
+	}
 }
 
 func UpdateSessionTimeout(w http.ResponseWriter, r *http.Request) {
@@ -29,40 +37,31 @@ func UpdateSessionTimeout(w http.ResponseWriter, r *http.Request) {
 		go func() {
 			ticker := time.NewTicker(1 * time.Second)
 			for {
+				<-ticker.C //wait a second. who are you?
+				sessionsMu.Lock()
 				for k, v := range sessions {
-					<-ticker.C
 					if time.Now().After(v.lastUpdate.Add(sessionTimeout)) {
 						delete(sessions, k)
+
+						queueMu.RLock()
+						_, ok := playersInQueue[v.username]
+						queueMu.RUnlock()
+
+						if ok {
+							queueMu.Lock()
+							delete(playersInQueue, v.username)
+							queueMu.Unlock()
+						}
 					}
 				}
+				sessionsMu.Unlock()
 			}
 		}()
 	})
 
-	info, err := getSessionInfoFromRequest(r)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	if _, err := auth(w, r); err == nil {
+		w.WriteHeader(http.StatusOK)
 	}
-	id, err := database.GetIdByUsername(info.Nickname)
-	if err != nil {
-		return
-	}
-
-	session, ok := sessions[info.SessionKey]
-	if !ok {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	if session.username != info.Nickname || session.userAgent != r.UserAgent() || session.id != id {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
-	session.lastUpdate = time.Now()
-	sessions[info.SessionKey] = session
-	w.WriteHeader(http.StatusOK)
 }
 
 func LogIn(w http.ResponseWriter, r *http.Request) {
@@ -73,6 +72,10 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 	}
 	usr := user.User{}
 	usr.NickName = authInfo.Nickname
+	usr.ID, err = database.GetIdByUsername(authInfo.Nickname)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+	}
 
 	ok, err := database.VerifyPassword(context.Background(), usr, authInfo.Password)
 	if err != nil || !ok {
@@ -84,8 +87,9 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	w.Write([]byte(key))
 	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(key))
+	sessionsMu.Lock()
 	sessions[key] = sessionValues{
 		id:         usr.ID,
 		username:   usr.NickName,
@@ -93,6 +97,7 @@ func LogIn(w http.ResponseWriter, r *http.Request) {
 		lastUpdate: time.Now(),
 		createdAt:  createdAt,
 	}
+	sessionsMu.Unlock()
 }
 
 func CreateUser(w http.ResponseWriter, r *http.Request) {
