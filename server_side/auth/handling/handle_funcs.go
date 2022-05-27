@@ -22,44 +22,25 @@ var (
 
 	playersInQueue = make(map[string]struct{})
 	queueMu        = &sync.RWMutex{}
+
+	findGameCh    = make(chan struct{})
+	gameFinder    = sync.Once{}
+	currentGameID = int64(0)
+
+	activeGames = make([]gameInfo, 1)
 )
 
 func FindGame(w http.ResponseWriter, r *http.Request) {
-	if info, err := auth(w, r); err == nil {
+	if info, err := authUsingSessionKey(w, r); err == nil {
 		queueMu.Lock()
 		playersInQueue[info.Nickname] = struct{}{}
 		queueMu.Unlock()
+		findGameCh <- struct{}{}
 	}
 }
 
 func UpdateSessionTimeout(w http.ResponseWriter, r *http.Request) {
-	sessionsCleaner.Do(func() {
-		go func() {
-			ticker := time.NewTicker(1 * time.Second)
-			for {
-				<-ticker.C //wait a second. who are you?
-				sessionsMu.Lock()
-				for k, v := range sessions {
-					if time.Now().After(v.lastUpdate.Add(sessionTimeout)) {
-						delete(sessions, k)
-
-						queueMu.RLock()
-						_, ok := playersInQueue[v.username]
-						queueMu.RUnlock()
-
-						if ok {
-							queueMu.Lock()
-							delete(playersInQueue, v.username)
-							queueMu.Unlock()
-						}
-					}
-				}
-				sessionsMu.Unlock()
-			}
-		}()
-	})
-
-	if _, err := auth(w, r); err == nil {
+	if _, err := authUsingSessionKey(w, r); err == nil {
 		w.WriteHeader(http.StatusOK)
 	}
 }
@@ -105,7 +86,7 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 
 	if usr.Nickname == "" || utf8.RuneCountInString(usr.Nickname) < 4 {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("nickname id too short\n"))
+		w.Write([]byte("nickname currentGameID too short\n"))
 		return
 	}
 
@@ -125,4 +106,13 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(200)
 	w.Write([]byte(fmt.Sprintf("%s, your account was created\n", usr.Nickname)))
+}
+
+func init() {
+	sessionsCleaner.Do(func() {
+		cleanSessions()
+	})
+	gameFinder.Do(func() {
+		tryToFindGame()
+	})
 }

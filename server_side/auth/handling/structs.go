@@ -32,8 +32,7 @@ type (
 	}
 
 	gameInfo struct {
-		ID              int64 `json:"id"`
-		player1nickname string
-		player2nickname string
+		ID      int64 `json:"currentGameID"`
+		players []string
 	}
 )

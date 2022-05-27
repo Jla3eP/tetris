@@ -17,15 +17,58 @@ import (
 const infoToSaltFormat = "%s:%s:%v:%v"
 
 func tryToFindGame() {
-	queueMu.RLock()
-	if len(playersInQueue) >= 2 {
+	go func() {
+		for {
+			<-findGameCh
+			GameInfo := gameInfo{
+				ID:      currentGameID,
+				players: make([]string, 0, 2),
+			}
 
-	} else {
-
-	}
+			queueMu.Lock()
+			for k := range playersInQueue {
+				if len(GameInfo.players) < 2 {
+					GameInfo.players = append(GameInfo.players, k)
+				} else {
+					activeGames = append(activeGames, GameInfo)
+					for i := range GameInfo.players {
+						delete(playersInQueue, GameInfo.players[i])
+					}
+					break
+				}
+			}
+			queueMu.Unlock()
+		}
+	}()
 }
 
-func auth(w http.ResponseWriter, r *http.Request) (*SessionUpdateRequest, error) {
+func cleanSessions() {
+	go func() {
+		ticker := time.NewTicker(500 * time.Millisecond)
+		for {
+			<-ticker.C //wait a second. who are you?
+			sessionsMu.Lock()
+			for k, v := range sessions {
+				if time.Now().After(v.lastUpdate.Add(sessionTimeout)) {
+					delete(sessions, k)
+
+					queueMu.RLock()
+					_, ok := playersInQueue[v.username]
+					queueMu.RUnlock()
+
+					if ok {
+						queueMu.Lock()
+						delete(playersInQueue, v.username)
+						queueMu.Unlock()
+					}
+				}
+			}
+			sessionsMu.Unlock()
+		}
+	}()
+}
+
+func authUsingSessionKey(w http.ResponseWriter, r *http.Request) (*SessionUpdateRequest, error) {
 	info, err := getSessionInfoFromRequest(r)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -96,8 +139,8 @@ func getAuthInfoFromRequest(w http.ResponseWriter, r *http.Request) (*AuthInfo, 
 	if err = json.Unmarshal(requestBody, usr); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 
-		log.Print("Invalid auth json")
-		return nil, errors.New("invalid auth json")
+		log.Print("Invalid authUsingSessionKey json")
+		return nil, errors.New("invalid authUsingSessionKey json")
 	}
 
 	return usr, nil

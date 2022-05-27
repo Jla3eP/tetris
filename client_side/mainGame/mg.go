@@ -15,9 +15,11 @@ type MainGame struct {
 	field  *field.Field
 	figure *field.Figure
 
-	defaultMoveDownTicker *time.Ticker
-	shortMoveDownTicker   *time.Ticker
-	moveTicker            *time.Ticker
+	moveDownDefaultTime time.Duration
+	moveDownShortTime   time.Duration
+	moveDownTimer       time.Time
+	moveTickerDuration  time.Duration
+	moveTicker          *time.Ticker
 
 	rotateTimer time.Time
 	rotateSleep time.Duration
@@ -36,9 +38,12 @@ func NewGame() *MainGame {
 	mg.field = field.NewField()
 	mg.render = createRenderObj(mg.field.GetSize())
 
-	mg.defaultMoveDownTicker = time.NewTicker(350 * time.Millisecond)
-	mg.shortMoveDownTicker = time.NewTicker(100 * time.Millisecond)
-	mg.moveTicker = time.NewTicker(100 * time.Millisecond)
+	mg.moveDownDefaultTime = 220 * time.Millisecond
+	mg.moveDownShortTime = 90 * time.Millisecond
+	mg.moveDownTimer = time.Now()
+
+	mg.moveTickerDuration = 100 * time.Millisecond
+	mg.moveTicker = time.NewTicker(mg.moveTickerDuration)
 	mg.rotateTimer = time.Now()
 	mg.rotateSleep = 150 * time.Millisecond
 
@@ -96,24 +101,33 @@ func (mg *MainGame) processInput() {
 
 func (mg *MainGame) processMoveDown() {
 	if !mg.movingDown {
-		select {
-		case <-mg.defaultMoveDownTicker.C:
-			break
-		default:
+		if !time.Now().After(mg.moveDownTimer.Add(mg.moveDownDefaultTime)) {
 			return
 		}
 	} else {
-		select {
-		case <-mg.shortMoveDownTicker.C:
-			break
-		default:
+		if !time.Now().After(mg.moveDownTimer.Add(mg.moveDownShortTime)) {
 			return
 		}
 	}
 
+	mg.moveDownTimer = time.Now()
+
 	if !mg.figure.MoveDown(mg.field) {
 		destroyedLines := mg.field.ClearField()
 		if destroyedLines != 0 {
+			mg.moveDownDefaultTime /= 100
+			mg.moveDownDefaultTime *= 98
+
+			mg.moveDownShortTime /= 100
+			mg.moveDownShortTime *= 98
+
+			mg.rotateSleep /= 100
+			mg.rotateSleep *= 98
+
+			mg.moveTickerDuration /= 100
+			mg.moveTickerDuration *= 98
+			mg.moveTicker.Reset(mg.moveTickerDuration)
+
 			mg.scores += int(float64(destroyedLines*500) * (math.Pow(1.5, float64(destroyedLines-1))))
 		}
 		mg.figure.Fixed = true

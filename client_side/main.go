@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 )
 
 //func main() {
@@ -27,22 +28,27 @@ func main() {
 	request := bytes.Buffer{}
 	request.Write([]byte(`{"nickname": "Jla3eP", "password": "1234qwer"}`))
 
-	req, err := http.NewRequest(http.MethodPost, "https://localhost:1234/logIn", &request)
-	resp, err := client.Do(req)
+	req, _ := http.NewRequest(http.MethodPost, "https://localhost:1234/logIn", &request)
+	resp, _ := client.Do(req)
 
-	if err != nil {
-		fmt.Println("err != nil", err)
-	} else {
-		respBody, _ := ioutil.ReadAll(resp.Body)
-		fmt.Printf("%v %s\n", resp.StatusCode, string(respBody))
+	respBody, _ := ioutil.ReadAll(resp.Body)
+	fmt.Printf("%v %s\n", resp.StatusCode, string(respBody))
+
+	{
+		time.Sleep(11 * time.Second)
 
 		request := bytes.Buffer{}
-		body := fmt.Sprintf(`{"nickname": "Jla3eP", "session_key": "%s"}`, respBody)
-		fmt.Println(body)
-		request.Write([]byte(body))
+		request.Write([]byte(fmt.Sprintf(`{"nickname": "Jla3eP", "session_key": "%s"}`, respBody)))
 
-		req, err = http.NewRequest(http.MethodPost, "https://localhost:1234/updateSession", &request)
+		req, err := http.NewRequest(http.MethodPost, "https://localhost:1234/findGame", &request)
 		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Println("err != nil", err)
+		} else {
+			respBody, _ := ioutil.ReadAll(resp.Body)
+			fmt.Printf("%v %s\n", resp.StatusCode, string(respBody))
+		}
+		resp, err = client.Do(req)
 		if err != nil {
 			fmt.Println("err != nil", err)
 		} else {
