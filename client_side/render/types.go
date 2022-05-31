@@ -1,10 +1,12 @@
 package render
 
-import "github.com/Jla3eP/tetris/client_side/field"
+import (
+	"github.com/Jla3eP/tetris/both_sides_code"
+)
 
 type (
 	Render struct {
-		FieldSize field.Coords2
+		FieldSize both_sides_code.Coords2
 	}
 
 	renderConfig struct {
@@ -15,9 +17,10 @@ type (
 		BonusPxWindowHeight       int32  `json:"bonus_px_window_height"`
 		BonusPercentsWindowWidth  int32  `json:"bonus_percents_window_width"`
 		BonusPercentsWindowHeight int32  `json:"bonus_percents_window_height"`
-		FieldBiasX                uint32 `json:"field_bias_x"`
-		FieldBiasY                uint32 `json:"field_bias_y"`
+		FieldBiasX                int32  `json:"field_bias_x"`
+		FieldBiasY                int32  `json:"field_bias_y"`
 		TargetFps                 int32  `json:"target_fps"`
 		PrintFps                  bool   `json:"print_fps"`
+		PixelsToEnemiesField      int32  `json:"pixels_to_enemies_field"`
 	}
 )

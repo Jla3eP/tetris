@@ -2,9 +2,12 @@ package handling
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/Jla3eP/tetris/both_sides_code"
 	"github.com/Jla3eP/tetris/server_side/auth/database"
 	"github.com/Jla3eP/tetris/server_side/auth/user"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -27,8 +30,55 @@ var (
 	gameFinder    = sync.Once{}
 	currentGameID = int64(0)
 
-	activeGames = make([]gameInfo, 1)
+	activeGames = make(map[int64]gameInfo)
+	gamesMu     = &sync.RWMutex{}
 )
+
+func GetGameInfo(w http.ResponseWriter, r *http.Request) {
+	if info, err := authUsingSessionKey(w, r); err == nil {
+		GameID, playerIndex, ok := findGameUsingUsername(info.Nickname)
+		if !ok {
+			processUnexpectedFindGameResponse(info, w)
+			return
+		}
+
+		setPlayerActiveStatus(GameID, playerIndex, true)
+		gameStatus := getGameStatus(GameID)
+		if gameStatus != gameStatusInProgress {
+			if arePlayersReady(GameID) {
+				setGameStatus(GameID, gameStatusInProgress)
+			}
+			gameStatus = getGameStatus(GameID)
+			if gameStatus != gameStatusInProgress {
+				sendResponseWaiting(w)
+				return
+			}
+		}
+
+		field, _ := getFieldFromRequest(r)
+
+		clearSecretInfo(field)
+		setFieldInfo(GameID, playerIndex, field)
+		requestField, err := getFieldInfoToPlayer(GameID, playerIndex) //TODO
+		if err != nil {
+			log.Print(err)
+		}
+		if needToGenerateNewFigures(GameID) {
+			appendFigures(GameID)
+		}
+
+		if requestField == nil {
+			requestField = &both_sides_code.FieldResponse{}
+		}
+		requestField.FigureID, requestField.FigureColor = getUserFigureAndColor(
+			GameID,
+			getPlayersFigureIndexAndIncrementIt(GameID, playerIndex),
+		)
+		w.WriteHeader(200)
+		JSON, _ := json.Marshal(requestField)
+		w.Write(JSON)
+	}
+}
 
 func FindGame(w http.ResponseWriter, r *http.Request) {
 	if info, err := authUsingSessionKey(w, r); err == nil {
@@ -115,4 +165,5 @@ func init() {
 	gameFinder.Do(func() {
 		tryToFindGame()
 	})
+	calculateFiguresCount()
 }

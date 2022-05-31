@@ -9,4 +9,12 @@ const (
 	ColorBlack
 )
 
+const (
+	StatusProcessing = iota
+	StatusWaiting
+	StatusPlaying
+	StatusWatching
+	StatusEnd
+)
+
 type Event int

@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/gorilla/mux v1.8.0
-	github.com/gorilla/websocket v1.5.0
+	github.com/gorilla/websocket v1.5.0  //
 	github.com/hajimehoshi/ebiten/v2 v2.3.0
 	go.mongodb.org/mongo-driver v1.8.4
 	golang.org/x/image v0.0.0-20220321031419-a8550c1d254a

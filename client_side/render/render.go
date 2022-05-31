@@ -16,6 +16,8 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"sync"
+	"time"
 )
 
 var (
@@ -32,13 +34,22 @@ var (
 	bonusPercentsWindowWidth  int32
 	bonusPercentsWindowHeight int32
 
-	fieldBiasX uint32
-	fieldBiasY uint32
+	fieldBiasX           int32
+	fieldBiasY           int32
+	enemyFieldBiasX      int32
+	pixelsToEnemiesField int32
 
-	font fnt.Face
+	font                 fnt.Face
+	enemyFieldBiasSetter sync.Once
+
+	waitingAnimationTicker = time.NewTicker(250 * time.Millisecond)
+	postfixWaitingString   = "."
+	waitingStringMu        = &sync.RWMutex{}
+	waitingStringUpdater   = sync.Once{}
+	animStopper            = make(chan struct{})
 )
 
-const pathToTexturesFormat = "client_side/render/textures/%s/texture_sq_%s.png"
+const pathToTexturesFormat = "render/textures/%s/texture_sq_%s.png"
 
 func GetX() int {
 	return windowX
@@ -48,29 +59,67 @@ func GetY() int {
 	return windowY
 }
 
-func (r *Render) RenderAll(screen *et.Image, field *field.Field, figure *field.Figure, scores int, endGame bool) {
-	r.renderFieldBackground(screen, r.FieldSize.X, r.FieldSize.Y)
-	r.renderField(screen, field)
-	if !endGame {
-		r.renderFigure(screen, figure)
+func updateWaitingPostfix() {
+loop:
+	for {
+		select {
+		case <-animStopper:
+			waitingAnimationTicker.Stop()
+			break loop
+		case <-waitingAnimationTicker.C:
+			waitingStringMu.Lock()
+			postfixWaitingString += "."
+			if len(postfixWaitingString) > 4 {
+				postfixWaitingString = "."
+			}
+			waitingStringMu.Unlock()
+		}
+	}
+}
+
+func (r *Render) RenderAll(screen *et.Image, field *field.Field, enemyField *field.Field, figure *field.Figure, scores, enemyScores int, status int) {
+	enemyFieldBiasSetter.Do(func() {
+		r.setEnemyFieldBias()
+	})
+	if status == constants.StatusWaiting {
+		r.renderWaiting(screen, field)
+	}
+	r.renderFieldBackground(screen, r.FieldSize.X, r.FieldSize.Y, fieldBiasX, fieldBiasY)
+	r.renderEnemyFieldBackground(screen)
+	r.renderField(screen, field, fieldBiasX, fieldBiasY)
+	r.renderEnemiesField(screen, enemyField)
+	if status == constants.StatusPlaying {
+		r.renderFigure(screen, figure, fieldBiasX, fieldBiasY)
 		r.renderInfo(screen, scores, field)
-	} else {
+		r.renderEnemyInfo(screen, enemyScores, enemyField)
+	} else if status == constants.StatusWatching {
 		r.renderEndgameInfo(screen, scores, field)
 	}
 }
 
+func (r *Render) renderWaiting(screen *et.Image, f *field.Field) {
+	waitingStringMu.RLock()
+	text.Draw(screen, "Waiting"+postfixWaitingString, font, int(fieldBiasX+(textureWidth+1)*int32(f.GetSize().X)),
+		int(fieldBiasY+textureHeight/2), color.RGBA{R: 255, G: 255, B: 255, A: 255})
+	waitingStringMu.RUnlock()
+}
+
 func (r *Render) renderEndgameInfo(screen *et.Image, scores int, f *field.Field) { //TODO
-	text.Draw(screen, "Game over\nYour scores:"+strconv.Itoa(scores)+"\nPress ESC to exit", font, int(int32(fieldBiasX)+(textureWidth+1)*int32(f.GetSize().X)),
+	text.Draw(screen, "Game over\nYour scores:"+strconv.Itoa(scores)+"\nPress ESC to exit", font, int(fieldBiasX+(textureWidth+1)*int32(f.GetSize().X)),
 		int(fieldBiasY), color.RGBA{R: 255, G: 255, B: 255, A: 255})
 }
 
-func (r *Render) renderFieldBackground(screen *et.Image, x, y int) {
+func (r *Render) renderEnemyFieldBackground(screen *et.Image) {
+	r.renderFieldBackground(screen, r.FieldSize.X, r.FieldSize.Y, enemyFieldBiasX, fieldBiasY)
+}
+
+func (r *Render) renderFieldBackground(screen *et.Image, x, y int, biasX, biasY int32) {
 	for i := 0; i < x; i++ {
 		for j := 0; j < y; j++ {
 			r.renderFieldElement(
 				screen,
-				int32(fieldBiasX)+int32(i)*textureWidth,
-				int32(fieldBiasY)+int32(j)*textureHeight,
+				biasX+int32(i)*textureWidth,
+				biasY+int32(j)*textureHeight,
 				constants.ColorBlack)
 		}
 	}
@@ -83,7 +132,15 @@ func (r *Render) renderFieldElement(screen *et.Image, x, y int32, color int) {
 	screen.DrawImage(textures[color], options)
 }
 
-func (r *Render) renderField(screen *et.Image, f *field.Field) {
+func (r *Render) renderEnemiesField(screen *et.Image, enemyField *field.Field) {
+	r.renderField(screen,
+		enemyField,
+		fieldBiasX+textureWidth*int32(r.FieldSize.X)+pixelsToEnemiesField,
+		fieldBiasY,
+	)
+}
+
+func (r *Render) renderField(screen *et.Image, f *field.Field, biasX, biasY int32) {
 	if f == nil {
 		return
 	}
@@ -92,27 +149,32 @@ func (r *Render) renderField(screen *et.Image, f *field.Field) {
 			if f.Field[y][x].IsActive {
 				r.renderFieldElement(
 					screen,
-					int32(fieldBiasX)+int32(x)*textureWidth,
-					int32(fieldBiasY)+int32(y)*textureHeight,
+					biasX+int32(x)*textureWidth,
+					biasY+int32(y)*textureHeight,
 					f.Field[y][x].Color)
 			}
 		}
 	}
 }
 
-func (r *Render) renderFigure(screen *et.Image, f *field.Figure) {
+func (r *Render) renderFigure(screen *et.Image, f *field.Figure, biasX, biasY int32) {
 	stateWithRightCoords := f.GetRightCoords()
 
 	for i := range stateWithRightCoords.Coords {
 		r.renderFieldElement(screen,
-			int32(fieldBiasX)+int32(stateWithRightCoords.Coords[i].X)*textureWidth,
-			int32(fieldBiasY)+int32(stateWithRightCoords.Coords[i].Y)*textureHeight,
+			biasX+int32(stateWithRightCoords.Coords[i].X)*textureWidth,
+			biasY+int32(stateWithRightCoords.Coords[i].Y)*textureHeight,
 			f.GetColor())
 	}
 }
 
 func (r *Render) renderInfo(screen *et.Image, scores int, f *field.Field) {
-	text.Draw(screen, strconv.Itoa(scores), font, int(int32(fieldBiasX)+(textureWidth+1)*int32(f.GetSize().X)),
+	text.Draw(screen, strconv.Itoa(scores), font, int(fieldBiasX+(textureWidth+1)*int32(f.GetSize().X)),
+		int(fieldBiasY), color.RGBA{R: 255, G: 255, B: 255, A: 255})
+}
+
+func (r *Render) renderEnemyInfo(screen *et.Image, scores int, f *field.Field) {
+	text.Draw(screen, strconv.Itoa(scores), font, int(enemyFieldBiasX+(textureWidth+1)*int32(f.GetSize().X)),
 		int(fieldBiasY), color.RGBA{R: 255, G: 255, B: 255, A: 255})
 }
 
@@ -124,8 +186,12 @@ func addTextureToMap(key int, TexturePackName, name string) {
 	}
 }
 
+func (r *Render) setEnemyFieldBias() {
+	enemyFieldBiasX = fieldBiasX + textureWidth*int32(r.FieldSize.X) + pixelsToEnemiesField
+}
+
 func setConfigAndUploadTextures() {
-	file, err := os.Open("client_side/render/render_config.json")
+	file, err := os.Open("./render/render_config.json")
 	defer file.Close()
 	if err != nil {
 		log.Fatalln(err)
@@ -152,9 +218,10 @@ func setConfigAndUploadTextures() {
 	bonusPercentsWindowHeight = config.BonusPercentsWindowHeight
 	fieldBiasX = config.FieldBiasX
 	fieldBiasY = config.FieldBiasY
+	pixelsToEnemiesField = config.PixelsToEnemiesField
 
-	windowX = int((int32(field.FieldX)*textureWidth)*(1+bonusPercentsWindowWidth/100)) + int(bonusPxWindowWidth+int32(fieldBiasX))
-	windowY = int((int32(field.FieldY)*textureHeight)*(1+bonusPercentsWindowHeight/100)) + int(bonusPxWindowHeight+int32(fieldBiasY))
+	windowX = int((int32(field.FieldX)*textureWidth)*(1+bonusPercentsWindowWidth/100))*2 + int(bonusPxWindowWidth+fieldBiasX)
+	windowY = int((int32(field.FieldY)*textureHeight)*(1+bonusPercentsWindowHeight/100)) + int(bonusPxWindowHeight+fieldBiasY)
 
 	textures = make(map[int]*et.Image)
 
@@ -169,5 +236,8 @@ func setConfigAndUploadTextures() {
 }
 
 func init() {
+	waitingStringUpdater.Do(func() {
+		go updateWaitingPostfix()
+	})
 	setConfigAndUploadTextures()
 }

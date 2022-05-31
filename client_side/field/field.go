@@ -2,6 +2,7 @@ package field
 
 import (
 	"errors"
+	"github.com/Jla3eP/tetris/both_sides_code"
 	et "github.com/hajimehoshi/ebiten/v2"
 )
 
@@ -30,8 +31,8 @@ func (f *Field) CheckCollision(figure *Figure) bool {
 	return false
 }
 
-func (f *Field) GetSize() Coords2 {
-	crds := Coords2{} // 🤤
+func (f *Field) GetSize() both_sides_code.Coords2 {
+	crds := both_sides_code.Coords2{} // 🤤
 	crds.Y = len(f.Field)
 	if crds.Y == 0 {
 		crds.X = 0

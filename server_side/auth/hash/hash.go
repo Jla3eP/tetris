@@ -1,5 +1,7 @@
 package hash
 
+//DO NOT EDIT
+
 import (
 	"crypto/sha256"
 	"fmt"

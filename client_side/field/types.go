@@ -1,6 +1,9 @@
 package field
 
-import "sync"
+import (
+	"github.com/Jla3eP/tetris/both_sides_code"
+	"sync"
+)
 
 func (f *Figure) GetCopy() *Figure {
 	figure := &Figure{PossibleStatuses: make([]PossibleStatus, len(f.PossibleStatuses))}
@@ -11,7 +14,7 @@ func (f *Figure) GetCopy() *Figure {
 }
 
 func (p *PossibleStatus) GetCopy() *PossibleStatus {
-	PS := &PossibleStatus{Coords: make([]Coords2, len(p.Coords))}
+	PS := &PossibleStatus{Coords: make([]both_sides_code.Coords2, len(p.Coords))}
 	copy(PS.Coords, p.Coords)
 	return PS
 }
@@ -27,13 +30,8 @@ type (
 		rwm   *sync.RWMutex
 	}
 
-	Coords2 struct {
-		X int `json:"x"`
-		Y int `json:"y"`
-	}
-
 	PossibleStatus struct {
-		Coords []Coords2 `json:"vec2"`
+		Coords []both_sides_code.Coords2 `json:"vec2"`
 	}
 
 	Figure struct {
@@ -41,7 +39,7 @@ type (
 		PossibleStatuses   []PossibleStatus `json:"possible_statuses"`
 		Color              int
 		CurrentRotateIndex int
-		CurrentCoords      Coords2
+		CurrentCoords      both_sides_code.Coords2
 		Mutex              *sync.Mutex
 		Fixed              bool
 	}

@@ -2,18 +2,21 @@ package mainGame
 
 import (
 	"errors"
+	"github.com/Jla3eP/tetris/both_sides_code"
+	"github.com/Jla3eP/tetris/client_side/constants"
 	"github.com/Jla3eP/tetris/client_side/field"
 	"github.com/Jla3eP/tetris/client_side/render"
+	"github.com/Jla3eP/tetris/client_side/requests"
 	et "github.com/hajimehoshi/ebiten/v2"
 	"math"
-	"math/rand"
 	"time"
 )
 
 type MainGame struct {
-	render *render.Render
-	field  *field.Field
-	figure *field.Figure
+	render       *render.Render
+	yourField    *field.Field
+	enemiesField *field.Field
+	figure       *field.Figure
 
 	moveDownDefaultTime time.Duration
 	moveDownShortTime   time.Duration
@@ -25,18 +28,21 @@ type MainGame struct {
 	rotateSleep time.Duration
 
 	movingDown  bool
-	endGame     bool
 	closeWindow bool
 
-	scores int
+	scores      int
+	enemyScores int
+	status      int
+
+	checkUpdatesTicker *time.Ticker
 }
 
 func NewGame() *MainGame {
-	rand.Seed(time.Now().UnixNano())
-	et.SetMaxTPS(60)
+	et.SetMaxTPS(500)
 	mg := &MainGame{}
-	mg.field = field.NewField()
-	mg.render = createRenderObj(mg.field.GetSize())
+	mg.yourField = field.NewField()
+	mg.enemiesField = field.NewField()
+	mg.render = createRenderObj(mg.yourField.GetSize())
 
 	mg.moveDownDefaultTime = 220 * time.Millisecond
 	mg.moveDownShortTime = 90 * time.Millisecond
@@ -49,19 +55,52 @@ func NewGame() *MainGame {
 
 	mg.movingDown = false
 	mg.closeWindow = false
+
+	mg.status = constants.StatusProcessing
+	mg.checkUpdatesTicker = time.NewTicker(100 * time.Millisecond)
 	return mg
 }
 
 func (mg *MainGame) Update() error {
-	if mg.figure == nil || mg.figure.Fixed {
-		mg.figure = field.GetRandomFigure()
-		if mg.field.CheckCollision(mg.figure) {
-			mg.endGame = true
+	if mg.status == constants.StatusProcessing {
+		requests.LogIn()
+		mg.status = constants.StatusWaiting
+		err := requests.FindGameRequest()
+		if err != nil {
+			return err
+		}
+		return nil
+	} else if mg.status == constants.StatusWaiting {
+		yourFigure, _, err := requests.GetGameInfoAndSendMyInfo(nil)
+		if err != nil {
+			return nil
+		}
+		mg.figure = yourFigure
+		mg.status = constants.StatusPlaying
+	} else if mg.status == constants.StatusPlaying {
+		if mg.figure == nil || mg.figure.Fixed {
+			reqInfo := &both_sides_code.FieldRequest{
+				EnemyFigureID:          int(mg.figure.GetID()),
+				EnemyFigureRotateIndex: mg.figure.CurrentRotateIndex,
+				EnemyFigureCoords:      mg.figure.CurrentCoords,
+				EnemyFigureColor:       mg.figure.GetColor(),
+			}
+			yourFigure, enemyFigure, err := requests.GetGameInfoAndSendMyInfo(reqInfo)
+			if err != nil {
+				return err
+			}
+			mg.figure = yourFigure
+			if enemyFigure != nil {
+				mg.enemiesField.FixateFigure(enemyFigure)
+			}
+			if mg.yourField.CheckCollision(mg.figure) {
+				mg.status = constants.StatusWatching
+			}
 		}
 	}
-	if !mg.endGame {
+	if mg.status == constants.StatusPlaying {
 		mg.processAll()
-	} else {
+	} else if mg.status == constants.StatusWatching || mg.status == constants.StatusEnd {
 		mg.checkESC()
 	}
 
@@ -88,13 +127,13 @@ func (mg *MainGame) processInput() {
 
 	select {
 	case <-mg.moveTicker.C:
-		_ = mg.field.TryMoveFigure(mg.figure)
+		_ = mg.yourField.TryMoveFigure(mg.figure)
 	default:
 		break
 	}
 
 	if et.IsKeyPressed(et.KeyW) && time.Now().After(mg.rotateTimer.Add(mg.rotateSleep)) {
-		_ = mg.field.TryRotateFigure(mg.figure)
+		_ = mg.yourField.TryRotateFigure(mg.figure)
 		mg.rotateTimer = time.Now()
 	}
 }
@@ -112,8 +151,9 @@ func (mg *MainGame) processMoveDown() {
 
 	mg.moveDownTimer = time.Now()
 
-	if !mg.figure.MoveDown(mg.field) {
-		destroyedLines := mg.field.ClearField()
+	if !mg.figure.MoveDown(mg.yourField) {
+		destroyedLines := mg.yourField.ClearField()
+		enemiesDestroyedLines := mg.enemiesField.ClearField()
 		if destroyedLines != 0 {
 			mg.moveDownDefaultTime /= 100
 			mg.moveDownDefaultTime *= 98
@@ -128,11 +168,15 @@ func (mg *MainGame) processMoveDown() {
 			mg.moveTickerDuration *= 98
 			mg.moveTicker.Reset(mg.moveTickerDuration)
 
-			mg.scores += int(float64(destroyedLines*500) * (math.Pow(1.5, float64(destroyedLines-1))))
+			mg.scores += mg.calcScoreBonus(destroyedLines)
+			mg.enemyScores += mg.calcScoreBonus(enemiesDestroyedLines)
 		}
 		mg.figure.Fixed = true
-		return
 	}
+}
+
+func (mg *MainGame) calcScoreBonus(destroyedLines int) int {
+	return int(float64(destroyedLines*500) * (math.Pow(1.5, float64(destroyedLines-1))))
 }
 
 func (mg *MainGame) processAll() {
@@ -141,13 +185,13 @@ func (mg *MainGame) processAll() {
 }
 
 func (mg *MainGame) Draw(screen *et.Image) {
-	mg.render.RenderAll(screen, mg.field, mg.figure, mg.scores, mg.endGame)
+	mg.render.RenderAll(screen, mg.yourField, mg.enemiesField, mg.figure, mg.scores, mg.enemyScores, mg.status)
 }
 
 func (mg *MainGame) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 	return render.GetX(), render.GetY()
 }
 
-func createRenderObj(fieldSize field.Coords2) *render.Render {
+func createRenderObj(fieldSize both_sides_code.Coords2) *render.Render {
 	return &render.Render{FieldSize: fieldSize}
 }

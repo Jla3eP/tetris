@@ -9,5 +9,6 @@
   "field_bias_x" : 50,
   "field_bias_y" : 50,
   "target_fps" : 60,
-  "print_fps" : false
+  "print_fps" : false,
+  "pixels_to_enemies_field" : 96
 }

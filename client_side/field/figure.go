@@ -2,37 +2,26 @@ package field
 
 import (
 	"encoding/json"
+	"github.com/Jla3eP/tetris/both_sides_code"
 	"github.com/Jla3eP/tetris/client_side/constants"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"os"
 	"sync"
 )
 
 var (
-	figures         []Figure
-	randFigureIndex int
-	randColorIndex  int
-	colors          []int
-	mutex           *sync.Mutex
+	figures []Figure
+	colors  []int
+	mutex   *sync.Mutex
 )
 
-func GetFigures() []Figure {
-	figuresCopy := make([]Figure, len(figures))
-	copy(figuresCopy, figures)
-	return figuresCopy
-}
-
-func GetRandomFigure() *Figure {
-	figures = GetFigures()
-	randFigureIndex = rand.Int() % len(figures)
-	randColorIndex = rand.Int() % len(colors)
-	figure := figures[randFigureIndex].GetCopy()
-	figure.Color = colors[randColorIndex]
+func GetFigureUsingIndex(index int) *Figure {
+	figure := figures[index].GetCopy()
 	figure.Mutex = mutex
 	figure.CurrentCoords.X = 4
 	figure.Fixed = false
+	figure.id = int8(index)
 	return figure
 }
 
@@ -57,7 +46,7 @@ func (f *Figure) GetRightCoords() *PossibleStatus {
 	currentState := f.GetCurrentStatus()
 	coords := f.CurrentCoords
 
-	statusWithRightCoords := PossibleStatus{Coords: make([]Coords2, len(currentState.Coords))}
+	statusWithRightCoords := PossibleStatus{Coords: make([]both_sides_code.Coords2, len(currentState.Coords))}
 	copy(statusWithRightCoords.Coords, currentState.Coords)
 
 	for i := range statusWithRightCoords.Coords {
@@ -71,6 +60,9 @@ func (f *Figure) GetColor() int {
 	return f.Color
 }
 
+func (f *Figure) GetID() int8 {
+	return f.id
+}
 func (f *Figure) moveRight() {
 	f.CurrentCoords.X++
 }
@@ -80,7 +72,7 @@ func (f *Figure) moveLeft() {
 }
 
 func init() {
-	file, err := os.Open("client_side/field/figures_config.json")
+	file, err := os.Open("../both_sides_code/figures_config.json")
 	defer file.Close()
 	if err != nil {
 		log.Fatalln(err)
@@ -110,7 +102,7 @@ func init() {
 		constants.ColorOrange,
 		constants.ColorRed,
 		constants.ColorYellow)
-	randFigureIndex = -1
+	_ = -1
 	mutex = &sync.Mutex{}
 }
 
