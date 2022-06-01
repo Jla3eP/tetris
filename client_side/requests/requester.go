@@ -12,24 +12,16 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"sync"
-	"time"
 )
 
 var (
 	tr = &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
-	client        = http.DefaultClient
-	sessionKey    []byte
-	StopPingingCh = make(chan struct{})
-	pinger        = sync.Once{}
-	nickName      string
+	client     = http.DefaultClient
+	sessionKey []byte
+	nickName   string
 )
-
-func StopPinging() {
-	StopPingingCh <- struct{}{}
-}
 
 func LogIn() {
 	info, err := logInInfo()
@@ -45,7 +37,6 @@ func LogIn() {
 	}
 
 	sessionKey, _ = ioutil.ReadAll(resp.Body)
-	//pingServer()
 }
 
 func Register(info *both_sides_code.AuthInfo) error {
@@ -92,7 +83,7 @@ func FindGameRequest() error {
 	return nil
 }
 
-func GetGameInfoAndSendMyInfo(reqInfo *both_sides_code.FieldRequest) (*field.Figure, *field.Figure, error) {
+func GetGameInfoAndSendMyInfo(reqInfo *both_sides_code.FieldRequest) (*field.Figure, []*field.Figure, error) {
 	if sessionKey == nil {
 		LogIn()
 	}
@@ -103,6 +94,7 @@ func GetGameInfoAndSendMyInfo(reqInfo *both_sides_code.FieldRequest) (*field.Fig
 	} else {
 		reqInfo.Nickname = nickName
 		reqInfo.SessionKey = string(sessionKey)
+		reqInfo.History[0].EnemyFigureSent = true
 		JSON, err := json.Marshal(reqInfo)
 		if err != nil {
 			return nil, nil, err
@@ -116,7 +108,10 @@ func GetGameInfoAndSendMyInfo(reqInfo *both_sides_code.FieldRequest) (*field.Fig
 		return nil, nil, err
 	}
 	respBody, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println(string(respBody))
+
+	if string(respBody) == "end" {
+		return nil, nil, errors.New("end")
+	}
 
 	if isWaitingResponseType(respBody) {
 		return nil, nil, errors.New("waiting")
@@ -128,16 +123,20 @@ func GetGameInfoAndSendMyInfo(reqInfo *both_sides_code.FieldRequest) (*field.Fig
 	yourFigure := field.GetFigureUsingIndex(fieldResp.FigureID)
 	yourFigure.Color = fieldResp.FigureColor
 
-	if !fieldResp.EnemyFigureSent {
+	if len(fieldResp.History) == 0 {
 		return yourFigure, nil, nil
 	}
 
-	enemyFigure := field.GetFigureUsingIndex(fieldResp.EnemyFigureID)
-	enemyFigure.Color = fieldResp.EnemyFigureColor
-	enemyFigure.CurrentCoords = fieldResp.EnemyFigureCoords
-	enemyFigure.CurrentRotateIndex = fieldResp.EnemyFigureRotateIndex
+	enemyFigures := make([]*field.Figure, 0, 1)
+	for _, v := range fieldResp.History {
+		enemyFigure := field.GetFigureUsingIndex(v.EnemyFigureID)
+		enemyFigure.Color = v.EnemyFigureColor
+		enemyFigure.CurrentCoords = v.EnemyFigureCoords
+		enemyFigure.CurrentRotateIndex = v.EnemyFigureRotateIndex
+		enemyFigures = append(enemyFigures, enemyFigure)
+	}
 
-	return yourFigure, enemyFigure, nil
+	return yourFigure, enemyFigures, nil
 }
 
 func isWaitingResponseType(respBody []byte) bool {
@@ -148,56 +147,13 @@ func isWaitingResponseType(respBody []byte) bool {
 	return rs.Comment == "status: waiting"
 }
 
-func pingServer() {
-	pinger.Do(func() {
-		go func() {
-			ticker := time.NewTicker(200 * time.Millisecond)
-			requestBody := bytes.Buffer{}
-			requestBody.Write([]byte(fmt.Sprintf(`{"nickname": "%s", "session_key": "%s"}`, nickName, sessionKey)))
-
-			req, _ := http.NewRequest(http.MethodPost, "https://localhost:1234/updateSession", &requestBody)
-
-		Loop:
-			for {
-				<-ticker.C
-				select {
-				case <-StopPingingCh:
-					break Loop
-				default:
-					break
-				}
-				resp, err := client.Do(req)
-				if err != nil {
-					log.Fatalln(err)
-					return
-				}
-				if resp.StatusCode != http.StatusOK {
-					log.Fatalln(errors.New(fmt.Sprintf("unexpected status code %v", resp.StatusCode)))
-					return
-				}
-			}
-		}()
-	})
-}
-
 func logInInfo() (*bytes.Buffer, error) {
-	file, err := os.Open("./logInfo.json")
-	defer file.Close()
-	if err != nil {
-		log.Fatalln(err)
-		return nil, err
+	authInfo := both_sides_code.AuthInfo{
+		Nickname: os.Args[1],
+		Password: os.Args[2],
 	}
-
-	buffer, err := ioutil.ReadAll(file)
+	buffer, err := json.Marshal(authInfo)
 	if err != nil {
-		log.Fatalln(err)
-		return nil, err
-	}
-
-	authInfo := both_sides_code.AuthInfo{}
-	err = json.Unmarshal(buffer, &authInfo)
-	if err != nil {
-		log.Fatalln(err)
 		return nil, err
 	}
 	nickName = authInfo.Nickname

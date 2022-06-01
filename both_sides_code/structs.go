@@ -13,15 +13,18 @@ type (
 		Password string `json:"password"`
 	}
 
-	FieldRequest struct {
+	EnemyFigure struct {
 		EnemyFigureID          int     `json:"enemy_figure_id"`
 		EnemyFigureColor       int     `json:"enemy_figure_color"`
 		EnemyFigureRotateIndex int     `json:"enemy_figure_rotate_index"`
 		EnemyFigureCoords      Coords2 `json:"enemy_figure_coords"`
 		EnemyFigureSent        bool    `json:"enemy_figure_sent"`
+	}
 
-		Nickname   string `json:"nickname"`
-		SessionKey string `json:"session_key"`
+	FieldRequest struct {
+		History    []EnemyFigure `json:"history"`
+		Nickname   string        `json:"nickname"`
+		SessionKey string        `json:"session_key"`
 	}
 
 	FieldResponse struct {

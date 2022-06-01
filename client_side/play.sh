@@ -1,2 +1,2 @@
 go build
-./client_side
+./client_side "$1" "$2"

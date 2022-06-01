@@ -23,6 +23,31 @@ const (
 
 var figuresCount int
 
+func cleanActiveGame(gameID int64, playerIndex int) bool {
+	if activeGames[gameID].status == gameStatusEnded {
+		activeGames[gameID].playerWatching[playerIndex] = false
+		for _, v := range activeGames[gameID].playerWatching {
+			if v {
+				return true
+			}
+		}
+		delete(activeGames, gameID)
+		return true
+	}
+	return false
+}
+
+func checkWatchers(gameID int64) {
+	for _, v := range activeGames[gameID].playerWatching {
+		if !v {
+			return
+		}
+	}
+	AG := activeGames[gameID]
+	AG.status = gameStatusEnded
+	activeGames[gameID] = AG
+}
+
 func appendFigures(gameID int64) {
 	gamesMu.RLock()
 	gi := generateFigures(activeGames[gameID])
@@ -55,7 +80,6 @@ func getPlayersFigureIndexAndIncrementIt(gameID int64, playerIndex int) int {
 	gamesMu.Lock()
 	defer gamesMu.Unlock()
 	activeGames[gameID].playersFiguresIndexes[playerIndex]++
-	fmt.Println(activeGames[gameID].playersFiguresIndexes[playerIndex])
 	return activeGames[gameID].playersFiguresIndexes[playerIndex] - 1
 }
 
@@ -82,13 +106,10 @@ func calculateFiguresCount() {
 	figuresCount = len(config.Figures)
 }
 
-func getFieldFromRequest(r *http.Request) (*both_sides_code.FieldRequest, error) {
+func getFieldFromRequest(requestBody []byte) (*both_sides_code.FieldRequest, error) {
 	fieldReq := both_sides_code.FieldRequest{}
-	requestBody, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return nil, errors.New("invalid request body")
-	}
-	if err = json.Unmarshal(requestBody, &fieldReq); err != nil {
+	fmt.Println(string(requestBody))
+	if err := json.Unmarshal(requestBody, &fieldReq); err != nil {
 		return nil, err
 	}
 
@@ -103,8 +124,21 @@ func getFieldInfoToPlayer(gameID int64, playerIndex int) (*both_sides_code.Field
 	}
 	for k, v := range activeGames[gameID].playersLastStatuses {
 		if k != playerIndex && v != nil {
+			fmt.Println(v)
 			response := both_sides_code.FieldResponse{
-				FieldRequest: *v,
+				FieldRequest: both_sides_code.FieldRequest{
+					History: make([]both_sides_code.EnemyFigure, 0, len(v)),
+				},
+			}
+			for _, vv := range v {
+				if len(vv.History) > 0 {
+					response.History = append(response.History, vv.History[0])
+				}
+			}
+			if playerIndex == 0 {
+				activeGames[gameID].playersLastStatuses[1] = nil
+			} else {
+				activeGames[gameID].playersLastStatuses[0] = nil
 			}
 			return &response, nil
 		}
@@ -123,7 +157,7 @@ func setFieldInfo(gameID int64, playerIndex int, field *both_sides_code.FieldReq
 	if field != nil {
 		gamesMu.Lock()
 		defer gamesMu.Unlock()
-		activeGames[gameID].playersLastStatuses[playerIndex] = field
+		activeGames[gameID].playersLastStatuses[playerIndex] = append(activeGames[gameID].playersLastStatuses[playerIndex], field)
 	}
 }
 
@@ -253,8 +287,8 @@ func cleanSessions() {
 	}()
 }
 
-func authUsingSessionKey(w http.ResponseWriter, r *http.Request) (*both_sides_code.SessionUpdateRequest, error) {
-	info, err := getSessionInfoFromRequest(r)
+func authUsingSessionKey(w http.ResponseWriter, r *http.Request, reqBody []byte) (*both_sides_code.SessionUpdateRequest, error) {
+	info, err := getSessionInfoFromRequest(reqBody)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return nil, err
@@ -282,7 +316,6 @@ func authUsingSessionKey(w http.ResponseWriter, r *http.Request) (*both_sides_co
 	session.lastUpdate = time.Now()
 	sessions[info.SessionKey] = session
 	sessionsMu.Unlock()
-
 	return info, nil
 }
 
@@ -297,14 +330,9 @@ func createSessionKey(r *http.Request, username string, ID primitive.ObjectID, c
 	return key, nil
 }
 
-func getSessionInfoFromRequest(r *http.Request) (*both_sides_code.SessionUpdateRequest, error) {
-	requestBody, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return nil, errors.New("invalid request body")
-	}
-
+func getSessionInfoFromRequest(reqBody []byte) (*both_sides_code.SessionUpdateRequest, error) {
 	info := &both_sides_code.SessionUpdateRequest{}
-	if err = json.Unmarshal(requestBody, info); err != nil {
+	if err := json.Unmarshal(reqBody, info); err != nil {
 		return nil, err
 	}
 

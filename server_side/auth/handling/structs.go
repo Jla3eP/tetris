@@ -19,7 +19,8 @@ func getNewGameInfo() gameInfo {
 		playerWatching:        make([]bool, 2, 2),
 		playersFiguresIndexes: make([]int, 2, 2),
 		lastStatuses: lastStatuses{
-			mu: &sync.RWMutex{},
+			mu:                  &sync.RWMutex{},
+			playersLastStatuses: make([][]*both_sides_code.FieldRequest, 2),
 		},
 	}
 }
@@ -27,12 +28,8 @@ func getNewGameInfo() gameInfo {
 func generateFigures(gi gameInfo) gameInfo {
 	rand.Seed(time.Now().UnixNano())
 	figuresProbabilities := make([]float64, figuresCount)
-	colorsProbabilities := make([]float64, figureColorsCount)
 	for i := range figuresProbabilities {
 		figuresProbabilities[i] = 1.0 / float64(figuresCount)
-	}
-	for i := range colorsProbabilities {
-		colorsProbabilities[i] = 1.0 / float64(figureColorsCount)
 	}
 
 	lastColor := -1
@@ -45,10 +42,10 @@ func generateFigures(gi gameInfo) gameInfo {
 			sum += int(v * 100000)
 			if sum > randFigureIndex {
 				randFigureIndex = k
-				figuresProbabilities[k] /= 2
+				figuresProbabilities[k] /= 2.0
 				for kk := range figuresProbabilities {
 					if kk != k {
-						figuresProbabilities[kk] += figuresProbabilities[k]
+						figuresProbabilities[kk] += figuresProbabilities[k] / float64(figuresCount-1)
 					}
 				}
 				break
@@ -82,7 +79,7 @@ type (
 
 	lastStatuses struct {
 		mu                  *sync.RWMutex
-		playersLastStatuses []*both_sides_code.FieldRequest
+		playersLastStatuses [][]*both_sides_code.FieldRequest
 	}
 
 	gameInfo struct {

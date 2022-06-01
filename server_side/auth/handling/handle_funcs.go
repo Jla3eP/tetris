@@ -7,7 +7,7 @@ import (
 	"github.com/Jla3eP/tetris/both_sides_code"
 	"github.com/Jla3eP/tetris/server_side/auth/database"
 	"github.com/Jla3eP/tetris/server_side/auth/user"
-	"log"
+	"io/ioutil"
 	"net/http"
 	"sync"
 	"time"
@@ -34,13 +34,35 @@ var (
 	gamesMu     = &sync.RWMutex{}
 )
 
-func GetGameInfo(w http.ResponseWriter, r *http.Request) {
-	if info, err := authUsingSessionKey(w, r); err == nil {
+func ILost(w http.ResponseWriter, r *http.Request) {
+	requestBody, _ := ioutil.ReadAll(r.Body)
+	if info, err := authUsingSessionKey(w, r, requestBody); err == nil {
 		GameID, playerIndex, ok := findGameUsingUsername(info.Nickname)
 		if !ok {
 			processUnexpectedFindGameResponse(info, w)
 			return
 		}
+		gamesMu.Lock()
+		activeGames[GameID].playerWatching[playerIndex] = true
+		checkWatchers(GameID)
+		gamesMu.Unlock()
+	}
+}
+
+func GetGameInfo(w http.ResponseWriter, r *http.Request) {
+	requestBody, _ := ioutil.ReadAll(r.Body)
+	if info, err := authUsingSessionKey(w, r, requestBody); err == nil {
+		GameID, playerIndex, ok := findGameUsingUsername(info.Nickname)
+		if !ok {
+			processUnexpectedFindGameResponse(info, w)
+			return
+		}
+		gamesMu.Lock()
+		if cleanActiveGame(GameID, playerIndex) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("end"))
+		}
+		gamesMu.Unlock()
 
 		setPlayerActiveStatus(GameID, playerIndex, true)
 		gameStatus := getGameStatus(GameID)
@@ -54,15 +76,11 @@ func GetGameInfo(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-
-		field, _ := getFieldFromRequest(r)
+		field, _ := getFieldFromRequest(requestBody)
 
 		clearSecretInfo(field)
 		setFieldInfo(GameID, playerIndex, field)
-		requestField, err := getFieldInfoToPlayer(GameID, playerIndex) //TODO
-		if err != nil {
-			log.Print(err)
-		}
+		requestField, _ := getFieldInfoToPlayer(GameID, playerIndex)
 		if needToGenerateNewFigures(GameID) {
 			appendFigures(GameID)
 		}
@@ -81,7 +99,9 @@ func GetGameInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func FindGame(w http.ResponseWriter, r *http.Request) {
-	if info, err := authUsingSessionKey(w, r); err == nil {
+	requestBody, _ := ioutil.ReadAll(r.Body)
+
+	if info, err := authUsingSessionKey(w, r, requestBody); err == nil {
 		queueMu.Lock()
 		playersInQueue[info.Nickname] = struct{}{}
 		queueMu.Unlock()
@@ -90,7 +110,9 @@ func FindGame(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateSessionTimeout(w http.ResponseWriter, r *http.Request) {
-	if _, err := authUsingSessionKey(w, r); err == nil {
+	requestBody, _ := ioutil.ReadAll(r.Body)
+
+	if _, err := authUsingSessionKey(w, r, requestBody); err == nil {
 		w.WriteHeader(http.StatusOK)
 	}
 }

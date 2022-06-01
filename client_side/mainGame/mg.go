@@ -9,6 +9,7 @@ import (
 	"github.com/Jla3eP/tetris/client_side/requests"
 	et "github.com/hajimehoshi/ebiten/v2"
 	"math"
+	"sync"
 	"time"
 )
 
@@ -35,6 +36,7 @@ type MainGame struct {
 	status      int
 
 	checkUpdatesTicker *time.Ticker
+	gameStopper        sync.Once
 }
 
 func NewGame() *MainGame {
@@ -80,27 +82,45 @@ func (mg *MainGame) Update() error {
 	} else if mg.status == constants.StatusPlaying {
 		if mg.figure == nil || mg.figure.Fixed {
 			reqInfo := &both_sides_code.FieldRequest{
-				EnemyFigureID:          int(mg.figure.GetID()),
-				EnemyFigureRotateIndex: mg.figure.CurrentRotateIndex,
-				EnemyFigureCoords:      mg.figure.CurrentCoords,
-				EnemyFigureColor:       mg.figure.GetColor(),
+				History: []both_sides_code.EnemyFigure{
+					{
+						EnemyFigureID:          int(mg.figure.GetID()),
+						EnemyFigureRotateIndex: mg.figure.CurrentRotateIndex,
+						EnemyFigureCoords:      mg.figure.CurrentCoords,
+						EnemyFigureColor:       mg.figure.GetColor(),
+					},
+				},
 			}
-			yourFigure, enemyFigure, err := requests.GetGameInfoAndSendMyInfo(reqInfo)
+			yourFigure, enemyFigures, err := requests.GetGameInfoAndSendMyInfo(reqInfo)
 			if err != nil {
 				return err
 			}
 			mg.figure = yourFigure
-			if enemyFigure != nil {
-				mg.enemiesField.FixateFigure(enemyFigure)
+			for _, v := range enemyFigures {
+				mg.enemiesField.FixateFigure(v)
 			}
 			if mg.yourField.CheckCollision(mg.figure) {
 				mg.status = constants.StatusWatching
 			}
 		}
+	} else if mg.status == constants.StatusWatching {
+		yourFigure, enemyFigures, err := requests.GetGameInfoAndSendMyInfo(nil)
+		if err != nil {
+			if err.Error() == "end" {
+				mg.status = constants.StatusEnd
+			}
+		}
+		mg.figure = yourFigure
+		for _, v := range enemyFigures {
+			mg.enemiesField.FixateFigure(v)
+		}
 	}
 	if mg.status == constants.StatusPlaying {
 		mg.processAll()
 	} else if mg.status == constants.StatusWatching || mg.status == constants.StatusEnd {
+		mg.gameStopper.Do(func() {
+
+		})
 		mg.checkESC()
 	}
 
